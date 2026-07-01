@@ -22,8 +22,9 @@ async function bootstrap() {
       const isLocalhost = /^http:\/\/localhost:\d+$/i.test(origin);
       const isRenderWeb = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin);
       const isThreadSutraDomain = /^https:\/\/([a-z0-9-]+\.)?thethreadsutra\.com$/i.test(origin);
+      const isWisteriaDomain = /^https:\/\/(www\.)?thewisteria\.co\.in$/i.test(origin);
 
-      callback(null, isConfigured || isLocalhost || isRenderWeb || isThreadSutraDomain);
+      callback(null, isConfigured || isLocalhost || isRenderWeb || isThreadSutraDomain || isWisteriaDomain);
     },
     credentials: true
   });

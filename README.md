@@ -66,6 +66,12 @@ If Render changes the service names, update:
 - API `CORS_ORIGIN` to the actual web URL
 - Web `NEXT_PUBLIC_API_URL` to the actual API URL
 
+For the live Wisteria domain, API `CORS_ORIGIN` should include:
+
+```bash
+https://thewisteria.co.in,https://www.thewisteria.co.in,https://thethreadsutra-web.onrender.com
+```
+
 ### Render Commands
 
 Single Render commands for both services:

@@ -13,7 +13,7 @@ services:
       - key: PORT
         value: 4000
       - key: CORS_ORIGIN
-        value: https://thethreadsutra-web.onrender.com
+        value: https://thewisteria.co.in,https://www.thewisteria.co.in,https://thethreadsutra-web.onrender.com
       - key: MONGODB_URI
         sync: false
       - key: FLIPKART_API_KEY
