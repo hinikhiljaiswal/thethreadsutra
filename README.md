@@ -49,10 +49,10 @@ For `thethreadsutra-api`:
 
 ```bash
 MONGODB_URI=<your MongoDB Atlas connection string>
-FLIPKART_APP_ID=<DMILLS Global Flipkart app id>
-FLIPKART_APP_SECRET=<DMILLS Global Flipkart app secret>
-FLIPKART_SELLER_ID=<DMILLS Global seller id>
-FLIPKART_LOCATION_ID=<Flipkart dispatch location id>
+FLIPKART_API_KEY=<DMILLS Global Flipkart API key>
+FLIPKART_API_SECRET=<DMILLS Global Flipkart API secret>
+FLIPKART_SELLER_ID=<DMILLS Global seller id, optional for basic listing/token checks>
+FLIPKART_LOCATION_ID=<Flipkart dispatch location id, optional until inventory update>
 ```
 
 For `thethreadsutra-web`:

@@ -938,10 +938,10 @@ export function IntegrationsConsole() {
                 <p className="mt-1 text-xs text-black/50">Use Flipkart Seller Dashboard &gt; Manage Profile &gt; Developer Access.</p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {[
-                    ['appId', 'App ID'],
-                    ['appSecret', 'App Secret'],
-                    ['sellerId', 'Seller ID'],
-                    ['locationId', 'Location ID']
+                    ['appId', 'API Key'],
+                    ['appSecret', 'API Secret'],
+                    ['sellerId', 'Seller ID (optional)'],
+                    ['locationId', 'Location ID (optional)']
                   ].map(([key, label]) => (
                     <input
                       key={key}
@@ -964,7 +964,7 @@ export function IntegrationsConsole() {
                 <div className="mt-3 text-xs leading-5 text-black/55">
                   <p>Portal: {flipkartProfile.portal}</p>
                   <p>Company: {flipkartProfile.companyName}</p>
-                  <p>App ID: {flipkartProfile.appId ?? 'Not configured'}</p>
+                  <p>API Key: {flipkartProfile.appId ?? 'Not configured'}</p>
                   <p>Seller ID: {flipkartProfile.sellerId ?? 'Not configured'}</p>
                   <p>Location ID: {flipkartProfile.locationId ?? 'Not configured'}</p>
                   <p>Token expiry: {flipkartProfile.tokenExpiresAt ? formatDate(flipkartProfile.tokenExpiresAt) : 'No token'}</p>

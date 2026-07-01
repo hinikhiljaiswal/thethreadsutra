@@ -14,8 +14,8 @@ const flipkartBaseUrl = 'https://api.flipkart.net';
 @Injectable()
 export class FlipkartService {
   private credentials: FlipkartCredentials = {
-    appId: process.env.FLIPKART_APP_ID,
-    appSecret: process.env.FLIPKART_APP_SECRET,
+    appId: process.env.FLIPKART_API_KEY || process.env.FLIPKART_APP_ID,
+    appSecret: process.env.FLIPKART_API_SECRET || process.env.FLIPKART_APP_SECRET,
     sellerId: process.env.FLIPKART_SELLER_ID,
     locationId: process.env.FLIPKART_LOCATION_ID
   };
@@ -177,7 +177,7 @@ export class FlipkartService {
 
   private assertCredentials() {
     if (!this.credentials.appId || !this.credentials.appSecret) {
-      throw new BadRequestException('Flipkart appId and appSecret are required. Configure them in the portal screen or environment variables.');
+      throw new BadRequestException('Flipkart API key and API secret are required. Configure them in the portal screen or environment variables.');
     }
   }
 
