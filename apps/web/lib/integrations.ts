@@ -30,12 +30,8 @@ function getApiUrl() {
   if (typeof window !== 'undefined') {
     const { hostname, protocol } = window.location;
 
-    if (hostname === 'thethreadsutra-web.onrender.com') {
+    if (hostname.endsWith('.onrender.com')) {
       return 'https://thethreadsutra-api.onrender.com';
-    }
-
-    if (hostname.endsWith('-web.onrender.com')) {
-      return `${protocol}//${hostname.replace('-web.onrender.com', '-api.onrender.com')}`;
     }
   }
 

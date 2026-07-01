@@ -20,7 +20,7 @@ async function bootstrap() {
 
       const isConfigured = configuredOrigins.includes(origin);
       const isLocalhost = /^http:\/\/localhost:\d+$/i.test(origin);
-      const isRenderWeb = /^https:\/\/[a-z0-9-]+-web\.onrender\.com$/i.test(origin);
+      const isRenderWeb = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin);
 
       callback(null, isConfigured || isLocalhost || isRenderWeb);
     },

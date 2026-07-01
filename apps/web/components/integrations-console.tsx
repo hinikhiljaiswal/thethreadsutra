@@ -483,22 +483,30 @@ export function IntegrationsConsole() {
   }
 
   async function saveFlipkartCredentials() {
-    const response = await fetch(`${apiUrl}/api/portals/flipkart/credentials`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(flipkartCredentials)
-    });
+    try {
+      const response = await fetch(`${apiUrl}/api/portals/flipkart/credentials`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flipkartCredentials)
+      });
 
-    if (!response.ok) {
-      setNotice('Could not save Flipkart credentials');
+      if (!response.ok) {
+        const errorText = await response.text();
+        setNotice(`Could not save Flipkart credentials: ${errorText || response.status}`);
+        return;
+      }
+
+      const profile = (await response.json()) as FlipkartProfile;
+      setFlipkartProfile(profile);
+      setInventoryForm((form) => ({ ...form, locationId: profile.locationId ?? form.locationId }));
+      setFlipkartCredentials(emptyFlipkartCredentials);
+      setNotice('Flipkart credentials saved for DMILLS Global');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Network error';
+      setNotice(`Could not reach API at ${apiUrl}. ${message}`);
+      setFlipkartResult(`Could not reach API at ${apiUrl}\n\n${message}`);
       return;
     }
-
-    const profile = (await response.json()) as FlipkartProfile;
-    setFlipkartProfile(profile);
-    setInventoryForm((form) => ({ ...form, locationId: profile.locationId ?? form.locationId }));
-    setFlipkartCredentials(emptyFlipkartCredentials);
-    setNotice('Flipkart credentials saved for DMILLS Global');
   }
 
   async function runFlipkartAction(action: 'token' | 'listing' | 'inventory' | 'shipments') {
@@ -527,7 +535,8 @@ export function IntegrationsConsole() {
         headers: { 'Content-Type': 'application/json' },
         body: config.body ? JSON.stringify(config.body) : undefined
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
       setFlipkartResult(JSON.stringify(data, null, 2));
       setNotice(`Flipkart ${action} request completed`);
       if (action === 'token') {
@@ -537,7 +546,8 @@ export function IntegrationsConsole() {
           .catch(() => undefined);
       }
     } catch (error) {
-      setFlipkartResult(error instanceof Error ? error.message : 'Flipkart request failed');
+      const message = error instanceof Error ? error.message : 'Flipkart request failed';
+      setFlipkartResult(`Request failed.\n\nAPI URL: ${apiUrl}\n\n${message}`);
       setNotice('Flipkart request failed');
     }
   }
