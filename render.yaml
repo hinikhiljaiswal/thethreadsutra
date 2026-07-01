@@ -16,9 +16,9 @@ services:
         value: https://thethreadsutra-web.onrender.com
       - key: MONGODB_URI
         sync: false
-      - key: FLIPKART_APP_ID
+      - key: FLIPKART_API_KEY
         sync: false
-      - key: FLIPKART_APP_SECRET
+      - key: FLIPKART_API_SECRET
         sync: false
       - key: FLIPKART_SELLER_ID
         sync: false

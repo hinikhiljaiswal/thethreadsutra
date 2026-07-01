@@ -22,7 +22,27 @@ export type IntegrationSummary = {
   regions: string[];
 };
 
-export const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+function getApiUrl() {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  if (typeof window !== 'undefined') {
+    const { hostname, protocol } = window.location;
+
+    if (hostname === 'thethreadsutra-web.onrender.com') {
+      return 'https://thethreadsutra-api.onrender.com';
+    }
+
+    if (hostname.endsWith('-web.onrender.com')) {
+      return `${protocol}//${hostname.replace('-web.onrender.com', '-api.onrender.com')}`;
+    }
+  }
+
+  return 'http://localhost:4000';
+}
+
+export const apiUrl = getApiUrl();
 
 export const sampleSummary: IntegrationSummary = {
   total: 19,
