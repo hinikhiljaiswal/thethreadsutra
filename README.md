@@ -68,16 +68,16 @@ If Render changes the service names, update:
 
 ### Render Commands
 
-API:
+Single Render commands for both services:
 
 ```bash
-npm run render:build:api
-npm run render:start:api
+npm run render:build
+npm run render:start
 ```
 
-Web:
+The scripts detect the service from `RENDER_SERVICE_NAME`. For local testing:
 
 ```bash
-npm run render:build:web
-npm run render:start:web
+RENDER_SERVICE_NAME=thethreadsutra-api npm run render:build
+RENDER_SERVICE_NAME=thethreadsutra-web npm run render:build
 ```

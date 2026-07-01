@@ -3,8 +3,8 @@ services:
     name: thethreadsutra-api
     runtime: node
     plan: free
-    buildCommand: npm run render:build:api
-    startCommand: npm run render:start:api
+    buildCommand: npm run render:build
+    startCommand: npm run render:start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
@@ -29,8 +29,8 @@ services:
     name: thethreadsutra-web
     runtime: node
     plan: free
-    buildCommand: npm run render:build:web
-    startCommand: npm run render:start:web
+    buildCommand: npm run render:build
+    startCommand: npm run render:start
     healthCheckPath: /
     autoDeploy: true
     envVars:
