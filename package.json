@@ -10,6 +10,10 @@
     "dev:web": "npm run dev -w apps/web",
     "dev:api": "npm run start:dev -w apps/api",
     "dev:mobile": "npm run start -w apps/mobile",
+    "render:build:api": "npm install && npm run build -w apps/api",
+    "render:build:web": "npm install && npm run build -w apps/web",
+    "render:start:api": "npm run start:prod -w apps/api",
+    "render:start:web": "npm run start:render -w apps/web",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"

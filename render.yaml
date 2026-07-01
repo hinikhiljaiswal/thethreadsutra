@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: thethreadsutra-api
+    runtime: node
+    plan: free
+    buildCommand: npm run render:build:api
+    startCommand: npm run render:start:api
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGIN
+        value: https://thethreadsutra-web.onrender.com
+      - key: MONGODB_URI
+        sync: false
+      - key: FLIPKART_APP_ID
+        sync: false
+      - key: FLIPKART_APP_SECRET
+        sync: false
+      - key: FLIPKART_SELLER_ID
+        sync: false
+      - key: FLIPKART_LOCATION_ID
+        sync: false
+
+  - type: web
+    name: thethreadsutra-web
+    runtime: node
+    plan: free
+    buildCommand: npm run render:build:web
+    startCommand: npm run render:start:web
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NEXT_PUBLIC_API_URL
+        value: https://thethreadsutra-api.onrender.com
