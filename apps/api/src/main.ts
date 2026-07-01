@@ -6,14 +6,14 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
-  const configuredOrigins = (config.get<string>('CORS_ORIGIN') ?? 'http://localhost:3000')
+  const configuredOrigins = (config.get<string>('CORS_ORIGIN') ?? '*')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
   app.enableCors({
     origin(origin, callback) {
-      if (!origin) {
+      if (!origin || configuredOrigins.includes('*')) {
         callback(null, true);
         return;
       }
@@ -21,8 +21,9 @@ async function bootstrap() {
       const isConfigured = configuredOrigins.includes(origin);
       const isLocalhost = /^http:\/\/localhost:\d+$/i.test(origin);
       const isRenderWeb = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin);
+      const isThreadSutraDomain = /^https:\/\/([a-z0-9-]+\.)?thethreadsutra\.com$/i.test(origin);
 
-      callback(null, isConfigured || isLocalhost || isRenderWeb);
+      callback(null, isConfigured || isLocalhost || isRenderWeb || isThreadSutraDomain);
     },
     credentials: true
   });
