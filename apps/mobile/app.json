@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "The Thread Sutra",
+    "slug": "the-thread-sutra",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#fffaf4"
+      }
+    }
+  }
+}
