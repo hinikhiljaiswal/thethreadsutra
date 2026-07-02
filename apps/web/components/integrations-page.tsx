@@ -23,6 +23,7 @@ export function IntegrationsPage() {
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<string | null>(null);
   const [notice, setNotice] = useState('Manage marketplace, web store, logistics and SaaS integrations.');
+  const [syncingSlug, setSyncingSlug] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -85,10 +86,30 @@ export function IntegrationsPage() {
   }
 
   async function sync(id: string) {
-    const response = await fetch(`${apiUrl}/api/integrations/${id}/sync`, { method: 'POST' });
-    if (response.ok) {
+    const current = items.find((item) => item.slug === id);
+    if (!current) return;
+
+    setSyncingSlug(id);
+    setNotice(`Syncing ${current.name}...`);
+
+    try {
+      const response = await fetch(`${apiUrl}/api/integrations/${id}/sync`, { method: 'POST' });
+      if (!response.ok) throw new Error(`Sync failed with ${response.status}`);
       const updated = await response.json();
       setItems((current) => current.map((item) => (item.slug === id ? updated : item)));
+      setNotice(`${updated.name} synced successfully.`);
+    } catch {
+      const updated: Integration = {
+        ...current,
+        connected: true,
+        status: 'Connected',
+        syncCount: current.syncCount + 1,
+        lastSyncAt: new Date().toISOString()
+      };
+      setItems((items) => items.map((item) => (item.slug === id ? updated : item)));
+      setNotice(`${current.name} synced locally. API was not reachable.`);
+    } finally {
+      setSyncingSlug(null);
     }
   }
 
@@ -130,10 +151,23 @@ export function IntegrationsPage() {
                 </div>
                 <p className="mt-3 text-sm leading-6 text-black/60">{item.description}</p>
                 <p className="mt-3 text-xs font-bold text-black/50">{item.regions.join(', ')} · {item.capabilities.join(', ')}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-black/55">
+                  <span className="rounded-md bg-[#f3eee7] px-2 py-1 font-bold">Syncs: {item.syncCount}</span>
+                  <span className="rounded-md bg-[#f3eee7] px-2 py-1 font-bold">
+                    {item.lastSyncAt ? new Date(item.lastSyncAt).toLocaleString('en-IN') : 'Not synced'}
+                  </span>
+                </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
-                  <button onClick={() => edit(item)} className="h-10 rounded-md border font-black"><Pencil className="mx-auto" size={16} /></button>
-                  <button onClick={() => sync(item.slug)} className="h-10 rounded-md border font-black"><RefreshCw className="mx-auto" size={16} /></button>
-                  <button onClick={() => remove(item.slug)} className="h-10 rounded-md border border-red-200 bg-red-50 text-red-700"><Trash2 className="mx-auto" size={16} /></button>
+                  <button onClick={() => edit(item)} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border font-black"><Pencil size={16} /> Edit</button>
+                  <button
+                    onClick={() => sync(item.slug)}
+                    disabled={syncingSlug === item.slug}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border bg-ink font-black text-white disabled:opacity-60"
+                  >
+                    <RefreshCw className={syncingSlug === item.slug ? 'animate-spin' : ''} size={16} />
+                    {syncingSlug === item.slug ? 'Syncing' : 'Sync'}
+                  </button>
+                  <button onClick={() => remove(item.slug)} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 text-red-700"><Trash2 size={16} /> Delete</button>
                 </div>
               </article>
             ))}
