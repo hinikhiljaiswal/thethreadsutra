@@ -27,14 +27,14 @@ export class OmsController {
     return this.omsService.findOne(id);
   }
 
-  @Post('sku-mappings')
-  createSkuMapping(@Body() mapping: Partial<OmsSkuMapping>) {
-    return this.omsService.create(mapping);
-  }
-
   @Post('sku-mappings/bulk')
   bulkSkuMappings(@Body() body: Partial<OmsSkuMapping>[] | { rows?: Partial<OmsSkuMapping>[] }) {
     return this.omsService.bulkUpsert(body);
+  }
+
+  @Post('sku-mappings')
+  createSkuMapping(@Body() mapping: Partial<OmsSkuMapping>) {
+    return this.omsService.create(mapping);
   }
 
   @Put('sku-mappings/:id')

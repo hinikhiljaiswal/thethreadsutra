@@ -12,6 +12,14 @@ type SkuMappingFilters = {
 @Injectable()
 export class OmsService {
   private skuMappings: OmsSkuMapping[] = [...omsSkuMappings];
+  private readonly requiredFields: Array<{ key: keyof OmsSkuMapping; label: string }> = [
+    { key: 'barcode', label: 'Bar Code' },
+    { key: 'marketPlace', label: 'Market Place' },
+    { key: 'brand', label: 'Brand' },
+    { key: 'sellerSku', label: 'Seller SKU' },
+    { key: 'masterSku', label: 'Master SKU' },
+    { key: 'category', label: 'Category' }
+  ];
 
   findSkuMappings(filters: SkuMappingFilters) {
     const query = filters.query?.trim().toLowerCase();
@@ -66,34 +74,17 @@ export class OmsService {
   }
 
   create(payload: Partial<OmsSkuMapping>) {
-    if (!payload.masterSku?.trim()) {
-      throw new BadRequestException('Master SKU is required');
+    const errors = this.validateMapping(payload);
+
+    if (errors.length > 0) {
+      throw new BadRequestException(errors.join(', '));
     }
 
-    if (!payload.sellerSku?.trim()) {
-      throw new BadRequestException('Seller SKU is required');
+    if (this.findExistingMapping(payload)) {
+      throw new BadRequestException('Duplicate OMS code already exists');
     }
 
-    const mapping: OmsSkuMapping = {
-      id: this.createUniqueId(payload.id || `${payload.marketPlace}-${payload.brand}-${payload.sellerSku}`),
-      barcode: this.clean(payload.barcode),
-      marketPlace: this.clean(payload.marketPlace || 'Flipkart'),
-      brand: this.clean(payload.brand || 'Thread Sutra'),
-      styleId: this.clean(payload.styleId),
-      van: this.clean(payload.van),
-      sellerSku: this.clean(payload.sellerSku),
-      masterSku: this.clean(payload.masterSku),
-      skuCode: this.clean(payload.skuCode),
-      size: this.clean(payload.size),
-      material: this.clean(payload.material),
-      packOf: Number(payload.packOf ?? 1),
-      grouping: this.clean(payload.grouping),
-      closure: this.clean(payload.closure),
-      style: this.clean(payload.style),
-      productName: this.clean(payload.productName),
-      category: payload.category?.trim() || 'Uncategorized',
-    };
-
+    const mapping = this.toMapping(payload);
     this.skuMappings.unshift(mapping);
     return mapping;
   }
@@ -105,19 +96,55 @@ export class OmsService {
       throw new BadRequestException('Upload rows are required');
     }
 
-    const saved = rows.map((row) => {
+    const saved: OmsSkuMapping[] = [];
+    const errors: string[] = [];
+    const seen = new Set<string>();
+
+    rows.forEach((row, index) => {
+      const rowNumber = index + 2;
+
+      if (this.isEmptyRow(row)) {
+        errors.push(`Row ${rowNumber}: empty row skipped`);
+        return;
+      }
+
+      const validationErrors = this.validateMapping(row);
+      if (validationErrors.length > 0) {
+        errors.push(`Row ${rowNumber}: ${validationErrors.join(', ')}`);
+        return;
+      }
+
+      const compositeKey = this.compositeKey(row);
+      if (seen.has(compositeKey)) {
+        errors.push(`Row ${rowNumber}: duplicate row in uploaded file`);
+        return;
+      }
+      seen.add(compositeKey);
+
       const existing = this.findExistingMapping(row);
 
       if (existing) {
-        return this.update(existing.id, row);
+        saved.push(this.update(existing.id, row));
+        return;
       }
 
-      return this.create(row);
+      const mapping = this.toMapping(row);
+      this.skuMappings.unshift(mapping);
+      saved.push(mapping);
     });
+
+    if (saved.length === 0) {
+      throw new BadRequestException({
+        message: 'No valid OMS rows found in uploaded file',
+        errors
+      });
+    }
 
     return {
       count: saved.length,
-      rows: saved
+      skipped: errors.length,
+      rows: saved,
+      errors
     };
   }
 
@@ -162,6 +189,54 @@ export class OmsService {
 
   private clean(value: unknown) {
     return String(value ?? '').trim();
+  }
+
+  private validateMapping(payload: Partial<OmsSkuMapping>) {
+    const errors = this.requiredFields
+      .filter((field) => !this.clean(payload[field.key]))
+      .map((field) => `${field.label} is required`);
+    const packOf = Number(payload.packOf ?? 1);
+
+    if (!Number.isFinite(packOf) || packOf <= 0) {
+      errors.push('Pack of must be greater than 0');
+    }
+
+    return errors;
+  }
+
+  private isEmptyRow(payload: Partial<OmsSkuMapping>) {
+    return Object.values(payload).every((value) => !this.clean(value));
+  }
+
+  private toMapping(payload: Partial<OmsSkuMapping>): OmsSkuMapping {
+    return {
+      id: this.createUniqueId(payload.id || `${payload.barcode}-${payload.marketPlace}-${payload.brand}-${payload.sellerSku}`),
+      barcode: this.clean(payload.barcode),
+      marketPlace: this.clean(payload.marketPlace),
+      brand: this.clean(payload.brand),
+      styleId: this.clean(payload.styleId),
+      van: this.clean(payload.van),
+      sellerSku: this.clean(payload.sellerSku),
+      masterSku: this.clean(payload.masterSku),
+      skuCode: this.clean(payload.skuCode),
+      size: this.clean(payload.size),
+      material: this.clean(payload.material),
+      packOf: Number(payload.packOf ?? 1),
+      grouping: this.clean(payload.grouping),
+      closure: this.clean(payload.closure),
+      style: this.clean(payload.style),
+      productName: this.clean(payload.productName),
+      category: this.clean(payload.category)
+    };
+  }
+
+  private compositeKey(payload: Partial<OmsSkuMapping>) {
+    return [
+      this.clean(payload.barcode).toLowerCase(),
+      this.clean(payload.marketPlace).toLowerCase(),
+      this.clean(payload.brand).toLowerCase(),
+      this.clean(payload.sellerSku).toLowerCase()
+    ].join('|');
   }
 
   private findExistingMapping(payload: Partial<OmsSkuMapping>) {

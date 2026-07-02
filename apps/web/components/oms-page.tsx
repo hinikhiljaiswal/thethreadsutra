@@ -1,7 +1,7 @@
 'use client';
 
 import { Download, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell } from './app-shell';
 import { apiUrl } from '../lib/integrations';
 import { sampleOmsMappings, sampleOmsSummary, type OmsSkuMapping, type OmsSummary } from '../lib/oms';
@@ -41,6 +41,15 @@ const formFields: { key: keyof typeof emptyForm; label: string }[] = [
   { key: 'closure', label: 'Closure' },
   { key: 'style', label: 'Style' },
   { key: 'productName', label: 'Product Name' },
+  { key: 'category', label: 'Category' }
+];
+
+const requiredFormFields: { key: keyof typeof emptyForm; label: string }[] = [
+  { key: 'barcode', label: 'Bar Code' },
+  { key: 'marketPlace', label: 'Market Place' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'sellerSku', label: 'Seller SKU' },
+  { key: 'masterSku', label: 'Master SKU' },
   { key: 'category', label: 'Category' }
 ];
 
@@ -197,8 +206,7 @@ function rowsToMappings(text: string) {
         id: makeId(form),
         ...toPayload(form)
       };
-    })
-    .filter((item) => item.sellerSku && item.masterSku);
+    });
 }
 
 function escapeCell(value: unknown) {
@@ -216,6 +224,19 @@ function downloadBlob(content: string, fileName: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
+async function readApiError(response: Response) {
+  try {
+    const body = await response.json();
+    if (Array.isArray(body.errors) && body.errors.length > 0) return body.errors.slice(0, 3).join(' | ');
+    if (Array.isArray(body.message)) return body.message.join(', ');
+    if (typeof body.message === 'string') return body.message;
+  } catch {
+    return 'Request failed.';
+  }
+
+  return 'Request failed.';
+}
+
 export function OmsPage() {
   const [items, setItems] = useState<OmsSkuMapping[]>(sampleOmsMappings);
   const [summary, setSummary] = useState<OmsSummary>(sampleOmsSummary);
@@ -227,6 +248,7 @@ export function OmsPage() {
   const [downloadFormat, setDownloadFormat] = useState('csv');
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState('Manage OMS code rows from the latest client sheet.');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -243,16 +265,6 @@ export function OmsPage() {
       .catch(() => setItems(sampleOmsMappings));
   }, [barcode, brand, category, marketplace, query]);
 
-  const barcodeCounts = useMemo(
-    () =>
-      items.reduce<Record<string, number>>((counts, item) => {
-        const key = item.barcode || 'No barcode';
-        counts[key] = (counts[key] ?? 0) + 1;
-        return counts;
-      }, {}),
-    [items]
-  );
-
   useEffect(() => {
     void loadSkuMappings();
   }, [loadSkuMappings]);
@@ -266,13 +278,28 @@ export function OmsPage() {
 
   function edit(item: OmsSkuMapping) {
     setEditing(item.id);
+    setShowForm(true);
     setForm(toForm(item));
     setNotice(`Editing ${item.sellerSku}`);
   }
 
+  function createNew() {
+    setEditing(null);
+    setShowForm(true);
+    setForm(emptyForm);
+    setNotice('Create a new OMS code row.');
+  }
+
   async function save() {
-    if (!form.masterSku.trim() || !form.sellerSku.trim()) {
-      setNotice('Master SKU and Seller SKU are required.');
+    const missingFields = requiredFormFields.filter((field) => !form[field.key].trim()).map((field) => field.label);
+
+    if (missingFields.length > 0) {
+      setNotice(`${missingFields.join(', ')} ${missingFields.length === 1 ? 'is' : 'are'} required.`);
+      return;
+    }
+
+    if (Number(form.packOf || 1) <= 0) {
+      setNotice('Pack of must be greater than 0.');
       return;
     }
 
@@ -286,17 +313,16 @@ export function OmsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error('Could not save OMS row');
+      if (!response.ok) throw new Error(await readApiError(response));
       saved = await response.json();
-    } catch {
-      saved = {
-        id: editing ?? makeId(form),
-        ...payload
-      };
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not save OMS row.');
+      return;
     }
 
     setItems((current) => (editing ? current.map((item) => (item.id === editing ? saved : item)) : [saved, ...current]));
     setEditing(null);
+    setShowForm(false);
     setForm(emptyForm);
     setNotice(`${saved.sellerSku} saved.`);
   }
@@ -328,32 +354,20 @@ export function OmsPage() {
       }
 
       let savedRows = rows;
-      let syncedToApi = false;
-      try {
-        const response = await fetch(`${apiUrl}/api/oms/sku-mappings/bulk`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows })
-        });
-        if (response.ok) {
-          const body = await response.json();
-          savedRows = body.rows ?? rows;
-          syncedToApi = true;
-        }
-      } catch {
-        savedRows = rows;
+      const response = await fetch(`${apiUrl}/api/oms/sku-mappings/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
       }
 
-      if (syncedToApi) {
-        void loadSkuMappings();
-      } else {
-        setItems((current) => {
-          const merged = new Map(current.map((item) => [item.id, item]));
-          savedRows.forEach((row) => merged.set(row.id, row));
-          return Array.from(merged.values());
-        });
-      }
-      setNotice(`${savedRows.length} OMS rows uploaded from ${file.name}.`);
+      const body = await response.json();
+      savedRows = body.rows ?? rows;
+      await loadSkuMappings();
+      setNotice(`${savedRows.length} OMS rows uploaded from ${file.name}.${body.skipped ? ` ${body.skipped} rows skipped.` : ''}`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not read the uploaded file.');
     } finally {
@@ -403,15 +417,42 @@ export function OmsPage() {
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[440px_1fr]">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button onClick={createNew} className="inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-black text-white">
+          <Plus size={16} /> Create OMS Code
+        </button>
+        <input
+          ref={fileInputRef}
+          className="hidden"
+          type="file"
+          accept=".csv,.tsv,.txt,.xls"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void uploadTemplate(file);
+          }}
+        />
+        <button onClick={() => fileInputRef.current?.click()} className="inline-flex h-11 items-center gap-2 rounded-md border border-black/10 bg-white px-4 font-black text-ink">
+          <Upload size={16} /> BulkUpdate
+        </button>
+        <select className="h-11 rounded-md border border-black/10 bg-white px-3" value={downloadFormat} onChange={(event) => setDownloadFormat(event.target.value)}>
+          <option value="csv">CSV</option>
+          <option value="xls">XLS</option>
+          <option value="json">JSON</option>
+          <option value="tsv">TSV</option>
+        </select>
+        <button onClick={() => downloadRows(downloadFormat)} className="inline-flex h-11 items-center gap-2 rounded-md bg-thread px-4 font-black text-white">
+          <Download size={16} /> Download
+        </button>
+      </div>
+
+      <div className={`grid gap-5 ${showForm ? 'xl:grid-cols-[440px_1fr]' : ''}`}>
+        {showForm ? (
         <aside className="rounded-lg border border-black/10 bg-white p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-xl font-black">{editing ? 'Edit OMS code' : 'Create OMS code'}</h2>
-            {editing ? (
-              <button onClick={() => { setEditing(null); setForm(emptyForm); setNotice('Edit cancelled.'); }}>
-                <X size={18} />
-              </button>
-            ) : null}
+            <button onClick={() => { setEditing(null); setShowForm(false); setForm(emptyForm); setNotice('Form closed.'); }}>
+              <X size={18} />
+            </button>
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             {formFields.map((field) => (
@@ -428,6 +469,7 @@ export function OmsPage() {
             <Plus size={16} /> Save OMS row
           </button>
         </aside>
+        ) : null}
 
         <section>
           <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_170px_170px_170px_170px]">
@@ -456,62 +498,6 @@ export function OmsPage() {
               <option value="all">All barcodes</option>
               {(summary.barcodes ?? Object.keys(summary.barcodeCounts ?? {})).map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInputRef}
-              className="hidden"
-              type="file"
-              accept=".csv,.tsv,.txt,.xls"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void uploadTemplate(file);
-              }}
-            />
-            <button onClick={() => fileInputRef.current?.click()} className="inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-black text-white">
-              <Upload size={16} /> BulkUpdate
-            </button>
-            <select className="h-11 rounded-md border border-black/10 bg-white px-3" value={downloadFormat} onChange={(event) => setDownloadFormat(event.target.value)}>
-              <option value="csv">CSV</option>
-              <option value="xls">XLS</option>
-              <option value="json">JSON</option>
-              <option value="tsv">TSV</option>
-            </select>
-            <button onClick={() => downloadRows(downloadFormat)} className="inline-flex h-11 items-center gap-2 rounded-md bg-thread px-4 font-black text-white">
-              <Download size={16} /> Download
-            </button>
-          </div>
-
-          <div className="mb-4 grid gap-3 lg:grid-cols-2">
-            <div className="rounded-lg border border-black/10 bg-white p-4">
-              <p className="mb-3 text-sm font-black text-black/55">Barcode wise counter</p>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(barcodeCounts).map(([itemBarcode, count]) => (
-                  <button
-                    key={itemBarcode}
-                    onClick={() => setBarcode(itemBarcode)}
-                    className={`rounded-full border px-3 py-1 text-xs font-black ${barcode === itemBarcode ? 'border-ink bg-ink text-white' : 'border-black/10 bg-[#f8f5f1] text-black/70'}`}
-                  >
-                    {itemBarcode}: {count}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-lg border border-black/10 bg-white p-4">
-              <p className="mb-3 text-sm font-black text-black/55">Marketplace color coding</p>
-              <div className="flex flex-wrap gap-2">
-                {summary.marketplaces.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setMarketplace(item)}
-                    className={`rounded-full border px-3 py-1 text-xs font-black ${marketplaceTone(item)}`}
-                  >
-                    {item}: {summary.mappedCounts[item.toLowerCase()] ?? 0}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-black/10 bg-white">
