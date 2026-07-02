@@ -1,64 +1,174 @@
 export type OmsSkuMapping = {
   id: string;
-  category: string;
+  barcode: string;
+  marketPlace: string;
+  brand: string;
+  styleId: string;
+  van: string;
+  sellerSku: string;
   masterSku: string;
-  color: string;
-  colorCode: string;
-  sizes: string[];
+  skuCode: string;
+  size: string;
+  material: string;
   packOf: number;
-  marketplaceSkus: Record<string, string>;
+  grouping: string;
+  closure: string;
+  style: string;
+  productName: string;
+  category: string;
 };
 
 export const omsSkuMappings: OmsSkuMapping[] = [
   {
-    id: 'cams-pm-bg',
-    category: 'Camisole',
-    masterSku: 'CAMS-PM',
-    color: 'BEIGE',
-    colorCode: 'BG',
-    sizes: ['S', 'M', 'L', '30', '32', '34'],
+    id: '0001-flipkart-dressberry-drbbkbludotxlpo1',
+    barcode: '0001',
+    marketPlace: 'Flipkart',
+    brand: 'DressBerry',
+    styleId: '42135004',
+    van: 'DRB-BK-BLUDOT-XL-PO1',
+    sellerSku: 'DRBBKBLUDOTXLPO1',
+    masterSku: 'BK-C-BLUDOT',
+    skuCode: 'DSBYBREF134605124',
+    size: 'XL',
+    material: 'Cotton',
     packOf: 1,
-    marketplaceSkus: {
-      amazon: 'TS-CAMS-PM-BG-S',
-      myntra: 'TS-CAMS-PM-BG-S (THREAD SUTRA BRAND)',
-      flipkart: 'TS-CAMS-PM-BG-S (THREAD SUTRA BRAND)',
-      ajio: '',
-      meesho: '',
-      snapdeal: ''
-    }
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'DressBerry Women Anti Microbial Lace Cotton Blend Bikini Briefs',
+    category: 'Briefs'
   },
   {
-    id: 'cams-pm-wht',
-    category: 'Camisole',
-    masterSku: 'CAMS-PM',
-    color: 'WHITE',
-    colorCode: 'WHT',
-    sizes: ['S', 'M', 'L', '30', '32', '34'],
+    id: '0001-flipkart-thread-sutra-tsbkblklcspo1',
+    barcode: '0001',
+    marketPlace: 'Flipkart',
+    brand: 'Thread Sutra',
+    styleId: '42135071',
+    van: 'TS-BK-BLK-LC-S-PO1',
+    sellerSku: 'TSBKBLKLCSPO1',
+    masterSku: 'BK-BLK',
+    skuCode: 'THSUBREF134605429',
+    size: '5XL',
+    material: 'Cotton',
     packOf: 1,
-    marketplaceSkus: {
-      amazon: '',
-      myntra: 'DRB-CAMS-PM-BG-S (DRESSBERRY BRAND)',
-      flipkart: 'DRB-CAMS-PM-BG-S (DRESSBERRY BRAND)',
-      ajio: '',
-      meesho: '',
-      snapdeal: ''
-    }
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'DressBerry Women Anti Microbial Lace Cotton Blend Bikini Briefs',
+    category: 'Briefs'
   },
   {
-    id: 'cams-pm-blk',
-    category: 'Camisole',
-    masterSku: 'CAMS-PM',
-    color: 'BLACK',
-    colorCode: 'BLK',
-    sizes: ['S', 'M', 'L', '30', '32', '34'],
+    id: '0001-myntra-dressberry-drbbkbludotxlpo2',
+    barcode: '0001',
+    marketPlace: 'Myntra',
+    brand: 'DressBerry',
+    styleId: '42135005',
+    van: 'DRB-BK-BLUDOT-XL-PO1',
+    sellerSku: 'DRBBKBLUDOTXLPO2',
+    masterSku: 'BK-C-BLUDOT',
+    skuCode: 'DSBYBREF134605125',
+    size: 'XL',
+    material: 'Cotton',
     packOf: 1,
-    marketplaceSkus: {
-      amazon: '',
-      myntra: 'HN-CAMS-PM-BG-S (HERE&NOW BRAND)',
-      flipkart: 'DBE-CAMS-PM-BG-S (DREAMBE BRAND)',
-      ajio: '',
-      meesho: '',
-      snapdeal: ''
-    }
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'Thread Sutra Women Anti Microbial Lace Cotton Blend Basic Briefs',
+    category: 'Briefs'
+  },
+  {
+    id: '0001-myntra-thread-sutra-tsbkblklcmpo2',
+    barcode: '0001',
+    marketPlace: 'Myntra',
+    brand: 'Thread Sutra',
+    styleId: '42135072',
+    van: 'TS-BK-BLK-LC-M-PO1',
+    sellerSku: 'TSBKBLKLCMPO2',
+    masterSku: 'BK-BLK',
+    skuCode: 'THSUBREF134605430',
+    size: '5XL',
+    material: 'Cotton',
+    packOf: 1,
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'Thread Sutra Women Anti Microbial Lace Cotton Blend Basic Briefs',
+    category: 'Briefs'
+  },
+  {
+    id: '0002-flipkart-dressberry-drbbkbludotxlp11',
+    barcode: '0002',
+    marketPlace: 'Flipkart',
+    brand: 'DressBerry',
+    styleId: '42135104',
+    van: 'DRB-BK-BLUDOT-XL-P11',
+    sellerSku: 'DRBBKBLUDOTXLP11',
+    masterSku: 'BK-C-BLUDOT',
+    skuCode: 'DSBYBREF134605124',
+    size: 'S',
+    material: 'Cotton',
+    packOf: 1,
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'DressBerry Women Anti Microbial Lace Cotton Blend Bikini Bra',
+    category: 'Bra'
+  },
+  {
+    id: '0002-flipkart-thread-sutra-tsbkblklcsp11',
+    barcode: '0002',
+    marketPlace: 'Flipkart',
+    brand: 'Thread Sutra',
+    styleId: '42135171',
+    van: 'TS-BK-BLK-LC-S-P11',
+    sellerSku: 'TSBKBLKLCSP11',
+    masterSku: 'BK-BLK',
+    skuCode: 'THSUBREF134605429',
+    size: 'M',
+    material: 'Cotton',
+    packOf: 1,
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'DressBerry Women Anti Microbial Lace Cotton Blend Bikini Bra',
+    category: 'Bra'
+  },
+  {
+    id: '0002-myntra-dressberry-drbbkbludotxlp12',
+    barcode: '0002',
+    marketPlace: 'Myntra',
+    brand: 'DressBerry',
+    styleId: '42135005',
+    van: 'DRB-BK-BLUDOT-XL-P11',
+    sellerSku: 'DRBBKBLUDOTXLP12',
+    masterSku: 'BK-C-BLUDOT',
+    skuCode: 'DSBYBREF134605125',
+    size: 'S',
+    material: 'Cotton',
+    packOf: 1,
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'Thread Sutra Women Anti Microbial Lace Cotton Blend Basic Bra',
+    category: 'Bra'
+  },
+  {
+    id: '0002-myntra-thread-sutra-tsbkblklcmp12',
+    barcode: '0002',
+    marketPlace: 'Myntra',
+    brand: 'Thread Sutra',
+    styleId: '42135072',
+    van: 'TS-BK-BLK-LC-M-P11',
+    sellerSku: 'TSBKBLKLCMP12',
+    masterSku: 'BK-BLK',
+    skuCode: 'THSUBREF134605430',
+    size: 'M',
+    material: 'Cotton',
+    packOf: 1,
+    grouping: '',
+    closure: '',
+    style: 'Bikini',
+    productName: 'Thread Sutra Women Anti Microbial Lace Cotton Blend Basic Bra',
+    category: 'Bra'
   }
 ];

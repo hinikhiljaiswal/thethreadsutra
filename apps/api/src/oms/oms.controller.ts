@@ -7,8 +7,8 @@ export class OmsController {
   constructor(private readonly omsService: OmsService) {}
 
   @Get('sku-mappings')
-  getSkuMappings(@Query('q') query?: string, @Query('marketplace') marketplace?: string) {
-    return this.omsService.findSkuMappings({ query, marketplace });
+  getSkuMappings(@Query('q') query?: string, @Query('marketplace') marketplace?: string, @Query('brand') brand?: string, @Query('category') category?: string) {
+    return this.omsService.findSkuMappings({ query, marketplace, brand, category });
   }
 
   @Get('summary')
