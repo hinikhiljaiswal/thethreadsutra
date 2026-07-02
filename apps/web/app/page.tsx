@@ -1,5 +1,5 @@
-import { IntegrationsConsole } from '../components/integrations-console';
+import { DashboardPage } from '../components/dashboard-page';
 
 export default function Home() {
-  return <IntegrationsConsole />;
+  return <DashboardPage />;
 }
