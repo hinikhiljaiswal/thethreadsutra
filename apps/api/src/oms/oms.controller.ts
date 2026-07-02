@@ -7,8 +7,14 @@ export class OmsController {
   constructor(private readonly omsService: OmsService) {}
 
   @Get('sku-mappings')
-  getSkuMappings(@Query('q') query?: string, @Query('marketplace') marketplace?: string, @Query('brand') brand?: string, @Query('category') category?: string) {
-    return this.omsService.findSkuMappings({ query, marketplace, brand, category });
+  getSkuMappings(
+    @Query('q') query?: string,
+    @Query('marketplace') marketplace?: string,
+    @Query('brand') brand?: string,
+    @Query('category') category?: string,
+    @Query('barcode') barcode?: string
+  ) {
+    return this.omsService.findSkuMappings({ query, marketplace, brand, category, barcode });
   }
 
   @Get('summary')
@@ -24,6 +30,11 @@ export class OmsController {
   @Post('sku-mappings')
   createSkuMapping(@Body() mapping: Partial<OmsSkuMapping>) {
     return this.omsService.create(mapping);
+  }
+
+  @Post('sku-mappings/bulk')
+  bulkSkuMappings(@Body() body: Partial<OmsSkuMapping>[] | { rows?: Partial<OmsSkuMapping>[] }) {
+    return this.omsService.bulkUpsert(body);
   }
 
   @Put('sku-mappings/:id')

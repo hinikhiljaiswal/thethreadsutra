@@ -6,6 +6,7 @@ type SkuMappingFilters = {
   marketplace?: string;
   brand?: string;
   category?: string;
+  barcode?: string;
 };
 
 @Injectable()
@@ -17,17 +18,19 @@ export class OmsService {
     const marketplace = filters.marketplace?.trim().toLowerCase();
     const brand = filters.brand?.trim().toLowerCase();
     const category = filters.category?.trim().toLowerCase();
+    const barcode = filters.barcode?.trim().toLowerCase();
 
     return this.skuMappings.filter((item) => {
       const searchableValues = Object.values(item).map((value) => String(value).toLowerCase());
       const matchesMarketplace = !marketplace || marketplace === 'all' || item.marketPlace.toLowerCase() === marketplace;
       const matchesBrand = !brand || brand === 'all' || item.brand.toLowerCase() === brand;
       const matchesCategory = !category || category === 'all' || item.category.toLowerCase() === category;
+      const matchesBarcode = !barcode || barcode === 'all' || item.barcode.toLowerCase() === barcode;
       const matchesQuery =
         !query ||
         searchableValues.some((value) => value.includes(query));
 
-      return matchesMarketplace && matchesBrand && matchesCategory && matchesQuery;
+      return matchesMarketplace && matchesBrand && matchesCategory && matchesBarcode && matchesQuery;
     });
   }
 
@@ -39,8 +42,13 @@ export class OmsService {
     const marketplaces = [...new Set(this.skuMappings.map((item) => item.marketPlace))].sort();
     const brands = [...new Set(this.skuMappings.map((item) => item.brand))].sort();
     const categories = [...new Set(this.skuMappings.map((item) => item.category))].sort();
+    const barcodes = [...new Set(this.skuMappings.map((item) => item.barcode))].filter(Boolean).sort();
     const mappedCounts = marketplaces.reduce<Record<string, number>>((counts, marketplace) => {
       counts[marketplace.toLowerCase()] = this.skuMappings.filter((item) => item.marketPlace === marketplace).length;
+      return counts;
+    }, {});
+    const barcodeCounts = barcodes.reduce<Record<string, number>>((counts, itemBarcode) => {
+      counts[itemBarcode] = this.skuMappings.filter((item) => item.barcode === itemBarcode).length;
       return counts;
     }, {});
 
@@ -51,7 +59,9 @@ export class OmsService {
       marketplaces,
       brands,
       categories,
-      mappedCounts
+      barcodes,
+      mappedCounts,
+      barcodeCounts
     };
   }
 
@@ -86,6 +96,29 @@ export class OmsService {
 
     this.skuMappings.unshift(mapping);
     return mapping;
+  }
+
+  bulkUpsert(payload: Partial<OmsSkuMapping>[] | { rows?: Partial<OmsSkuMapping>[] }) {
+    const rows = Array.isArray(payload) ? payload : payload.rows;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new BadRequestException('Upload rows are required');
+    }
+
+    const saved = rows.map((row) => {
+      const existing = this.findExistingMapping(row);
+
+      if (existing) {
+        return this.update(existing.id, row);
+      }
+
+      return this.create(row);
+    });
+
+    return {
+      count: saved.length,
+      rows: saved
+    };
   }
 
   update(id: string, payload: Partial<OmsSkuMapping>) {
@@ -131,12 +164,28 @@ export class OmsService {
     return String(value ?? '').trim();
   }
 
+  private findExistingMapping(payload: Partial<OmsSkuMapping>) {
+    const id = this.clean(payload.id);
+    const barcode = this.clean(payload.barcode).toLowerCase();
+    const marketplace = this.clean(payload.marketPlace).toLowerCase();
+    const brand = this.clean(payload.brand).toLowerCase();
+    const sellerSku = this.clean(payload.sellerSku).toLowerCase();
+    const deterministicId = this.toBaseId(`${payload.barcode}-${payload.marketPlace}-${payload.brand}-${payload.sellerSku}`);
+
+    return this.skuMappings.find((item) => {
+      const sameComposite =
+        Boolean(sellerSku) &&
+        item.sellerSku.toLowerCase() === sellerSku &&
+        item.marketPlace.toLowerCase() === marketplace &&
+        item.brand.toLowerCase() === brand &&
+        item.barcode.toLowerCase() === barcode;
+
+      return item.id === id || item.id === deterministicId || sameComposite;
+    });
+  }
+
   private createUniqueId(value: string) {
-    const baseId =
-      value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '') || 'sku-mapping';
+    const baseId = this.toBaseId(value);
     let id = baseId;
     let suffix = 2;
 
@@ -146,5 +195,14 @@ export class OmsService {
     }
 
     return id;
+  }
+
+  private toBaseId(value: string) {
+    return (
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'sku-mapping'
+    );
   }
 }

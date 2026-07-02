@@ -25,7 +25,9 @@ export type OmsSummary = {
   marketplaces: string[];
   brands: string[];
   categories: string[];
+  barcodes: string[];
   mappedCounts: Record<string, number>;
+  barcodeCounts: Record<string, number>;
 };
 
 export const sampleOmsMappings: OmsSkuMapping[] = [
@@ -76,8 +78,13 @@ export const sampleOmsSummary: OmsSummary = {
   marketplaces: ['Flipkart', 'Myntra'],
   brands: ['DressBerry', 'Thread Sutra'],
   categories: ['Bra', 'Briefs'],
+  barcodes: ['0001', '0002'],
   mappedCounts: {
     flipkart: 4,
     myntra: 4
+  },
+  barcodeCounts: {
+    '0001': 4,
+    '0002': 4
   }
 };
