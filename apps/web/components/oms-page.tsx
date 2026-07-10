@@ -334,6 +334,66 @@ const quickTabs: { key: OmsTab; label: string; icon: typeof ListChecks }[] = [
   { key: 'handover', label: 'Shipment Handover', icon: Warehouse }
 ];
 
+const moduleCatalog = [
+  {
+    group: 'Order Management',
+    screens: ['Order Enquiry', 'Order Create/Edit', 'Global Order Search', 'Master Order Enquiry', 'Order Import', 'Bulk Order Update', 'OMS Rules']
+  },
+  {
+    group: 'Outbound WMS',
+    screens: [
+      'Order Acknowledgement',
+      'Order Allocate/Unallocate',
+      'Manage Picklist',
+      'Manage Picking',
+      'Delivery Picking',
+      'Delivery Pack/UnPack',
+      'Delivery Shipping',
+      'Delivery Split',
+      'Shipment Handover',
+      'Sort To Box'
+    ]
+  },
+  {
+    group: 'Inventory',
+    screens: [
+      'Inventory View',
+      'Inventory Move',
+      'Inventory Move By Scan',
+      'Inventory Move History',
+      'Inventory Hold',
+      'Cycle Count',
+      'BIN Audit',
+      'SKU Transaction History',
+      'Manage Inventory Reservation'
+    ]
+  },
+  {
+    group: 'Inbound',
+    screens: ['Inbound Enquiry', 'Inbound Create/Edit', 'Inbound RealTime', 'Inbound QC', 'Direct Inbound', 'STO Inbound', 'PutAway Enquiry', 'Discrepancy Enquiry']
+  },
+  {
+    group: 'Returns',
+    screens: ['Return Enquiry', 'Return Create/Edit', 'Return W/o Order', 'Return Inbound Create/Edit', 'RTV Enquiry', 'Vendor Return Create/Edit', 'Global Returns Search']
+  },
+  {
+    group: 'Masters & Setup',
+    screens: ['SKU Master', 'SKU Import', 'SKU Barcode', 'Vendor Master', 'Customer Master', 'Transporter Master', 'Manage Channels', 'Zone', 'Bin Enquiry', 'Location Enquiry']
+  },
+  {
+    group: 'Reports & Admin',
+    screens: ['Dashboard', 'Seller Panel Dashboard', 'User Enquiry', 'User Audit Logs', 'API Dashboard', 'Invoice', 'Manifest Report', 'Dispatch Report', 'Pick Pack Report']
+  }
+];
+
+const flowSteps: { tab: OmsTab; label: string; status: OrderStatus; action: string; description: string }[] = [
+  { tab: 'acknowledgement', label: 'Acknowledge', status: 'Pending', action: 'Accept or reject channel orders', description: 'Validate incoming marketplace and web orders.' },
+  { tab: 'acknowledgement', label: 'Allocate', status: 'Accepted', action: 'Allocate stock and location', description: 'Move accepted orders into warehouse execution.' },
+  { tab: 'picklist', label: 'Picklist', status: 'Allocated', action: 'Generate SKU/zone wise wave', description: 'Create waves from allocated orders by zone, bin, SKU, or channel.' },
+  { tab: 'picklist', label: 'Picking', status: 'Picked', action: 'Confirm picked quantities', description: 'Picked orders are ready for packing and shipment.' },
+  { tab: 'shipping', label: 'Ship & Handover', status: 'Shipped', action: 'Manifest and close handover', description: 'Complete shipment, transporter handover, and export manifests.' }
+];
+
 function makeId(item: typeof emptyForm) {
   return `${item.barcode}-${item.marketPlace}-${item.brand}-${item.sellerSku}`
     .toLowerCase()
@@ -510,6 +570,9 @@ export function OmsPage() {
   const [waveForm, setWaveForm] = useState(emptyWave);
   const [waves, setWaves] = useState<Wave[]>([]);
   const [notice, setNotice] = useState('OMS workspace ready.');
+  const [session, setSession] = useState<{ token: string; username: string; role: string } | null>(null);
+  const [loginForm, setLoginForm] = useState({ username: 'ABCDnnn', password: 'ABCD@1122' });
+  const [loginError, setLoginError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadSkuMappings = useCallback(() => {
@@ -542,6 +605,17 @@ export function OmsPage() {
   useEffect(() => {
     void loadSkuMappings();
   }, [loadSkuMappings]);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem('oms-session');
+    if (!raw) return;
+
+    try {
+      setSession(JSON.parse(raw));
+    } catch {
+      window.localStorage.removeItem('oms-session');
+    }
+  }, []);
 
   useEffect(() => {
     void loadOrders();
@@ -582,6 +656,36 @@ export function OmsPage() {
     setForm(toForm(item));
     setActiveTab('mapping');
     setNotice(`Editing ${item.sellerSku}`);
+  }
+
+  async function login() {
+    setLoginError('');
+
+    try {
+      const response = await fetch(`${apiUrl}/api/oms/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm)
+      });
+      if (!response.ok) throw new Error(await readApiError(response));
+      const body = await response.json();
+      const nextSession = {
+        token: body.token,
+        username: body.user.username,
+        role: body.user.role
+      };
+      window.localStorage.setItem('oms-session', JSON.stringify(nextSession));
+      setSession(nextSession);
+      setNotice(`${nextSession.username} logged in as ${nextSession.role}.`);
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : 'Login failed.');
+    }
+  }
+
+  function logout() {
+    window.localStorage.removeItem('oms-session');
+    setSession(null);
+    setActiveTab('dashboard');
   }
 
   function createNew() {
@@ -790,6 +894,30 @@ export function OmsPage() {
 
     return (
       <div className="space-y-4">
+        <section className="border border-slate-300 bg-white">
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold">Outbound Order Flow</div>
+          <div className="grid gap-0 lg:grid-cols-5">
+            {flowSteps.map((step, index) => {
+              const count = orders.filter((order) => order.status === step.status).length;
+              return (
+                <button
+                  key={step.label}
+                  onClick={() => setActiveTab(step.tab)}
+                  className="relative min-h-36 border-b border-r border-slate-200 p-4 text-left transition hover:bg-sky-50 lg:border-b-0"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-sky-600 text-sm font-black text-white">{index + 1}</span>
+                    <span className={`rounded border px-2 py-1 text-xs font-bold ${toneForStatus(step.status)}`}>{count} {step.status}</span>
+                  </div>
+                  <p className="text-base font-black">{step.label}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-600">{step.action}</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{step.description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
           {[
             ['Pending', metrics.pending, 'bg-emerald-500'],
@@ -842,6 +970,32 @@ export function OmsPage() {
             </div>
           </section>
         </div>
+
+        <section className="border border-slate-300 bg-white">
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold">Authenticated Demo Navigation Map</div>
+          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
+            {moduleCatalog.map((group) => (
+              <article key={group.group} className="border border-slate-200">
+                <h3 className="border-b border-slate-200 bg-[#ededf7] px-3 py-2 text-sm font-black">{group.group}</h3>
+                <div className="grid gap-1 p-3">
+                  {group.screens.map((screen) => (
+                    <button
+                      key={screen}
+                      onClick={() => {
+                        const tab = screen.includes('Pick') ? 'picklist' : screen.includes('Ship') || screen.includes('Pack') ? 'shipping' : screen.includes('Inventory') ? 'mapping' : 'acknowledgement';
+                        setActiveTab(tab);
+                        setNotice(`${screen} mapped into the ${tab} workflow module.`);
+                      }}
+                      className="rounded px-2 py-1 text-left text-xs font-semibold text-slate-600 hover:bg-sky-50 hover:text-sky-700"
+                    >
+                      {screen}
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       </div>
     );
   }
@@ -1129,6 +1283,45 @@ export function OmsPage() {
     );
   }
 
+  if (!session) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#e9eef4] px-4 text-slate-800">
+        <section className="w-full max-w-[420px] border border-slate-300 bg-white shadow-sm">
+          <div className="bg-[#368eb6] px-5 py-4 text-white">
+            <p className="text-2xl font-black">eRetail OMS</p>
+            <p className="text-sm font-semibold text-white/80">Warehouse Management System</p>
+          </div>
+          <div className="space-y-3 p-5">
+            <label className="block text-sm font-bold">
+              User
+              <input
+                className="mt-1 h-10 w-full rounded border border-slate-300 px-3 font-mono text-sm"
+                value={loginForm.username}
+                onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
+              />
+            </label>
+            <label className="block text-sm font-bold">
+              Password
+              <input
+                className="mt-1 h-10 w-full rounded border border-slate-300 px-3 font-mono text-sm"
+                type="password"
+                value={loginForm.password}
+                onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void login();
+                }}
+              />
+            </label>
+            {loginError ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{loginError}</p> : null}
+            <button onClick={() => void login()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded bg-orange-500 px-4 text-sm font-bold text-white">
+              <Check size={16} /> Login
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#f6f7fb] text-slate-800">
       <div className="flex min-h-screen">
@@ -1168,11 +1361,13 @@ export function OmsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold">JX Karawaci</span>
+                <span className="rounded bg-white/15 px-2 py-1 text-xs font-bold">{session.username}</span>
                 <select className="h-9 rounded-l bg-[#277aa2] px-3 text-sm font-bold outline-none"><option>Web Order No</option><option>SKU Code</option></select>
                 <div className="relative">
                   <input className="h-9 w-52 rounded-r bg-white pl-3 pr-9 text-slate-800 outline-none" value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} />
                   <Search className="absolute right-2 top-2 text-slate-500" size={18} />
                 </div>
+                <button onClick={logout} className="h-9 rounded bg-white/15 px-3 text-sm font-bold">Logout</button>
               </div>
             </div>
           </header>

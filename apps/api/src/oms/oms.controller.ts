@@ -6,6 +6,11 @@ import type { OmsOrderStatus, OmsSkuMapping } from './seed-oms';
 export class OmsController {
   constructor(private readonly omsService: OmsService) {}
 
+  @Post('login')
+  login(@Body() body: { username?: string; password?: string }) {
+    return this.omsService.login(body);
+  }
+
   @Get('sku-mappings')
   getSkuMappings(
     @Query('q') query?: string,

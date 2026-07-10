@@ -1,5 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { omsOrders, omsSkuMappings, type OmsOrderRow, type OmsOrderStatus, type OmsSkuMapping, type OmsWave } from './seed-oms';
+import { OmsAuditEventModel, OmsOrderModel, OmsSkuMappingModel, OmsWaveModel } from './schemas/oms.schema';
 
 type SkuMappingFilters = {
   query?: string;
@@ -36,11 +39,24 @@ type GenerateWavePayload = {
   skuCode?: string;
 };
 
+type LoginPayload = {
+  username?: string;
+  password?: string;
+};
+
 @Injectable()
 export class OmsService {
   private skuMappings: OmsSkuMapping[] = [...omsSkuMappings];
   private orders: OmsOrderRow[] = [...omsOrders];
   private waves: OmsWave[] = [];
+  private readonly allowedTransitions: Record<OmsOrderStatus, OmsOrderStatus[]> = {
+    Pending: ['Accepted', 'Rejected'],
+    Accepted: ['Allocated', 'Rejected'],
+    Rejected: ['Pending'],
+    Allocated: ['Picked', 'Rejected'],
+    Picked: ['Shipped', 'Allocated'],
+    Shipped: []
+  };
   private readonly requiredFields: Array<{ key: keyof OmsSkuMapping; label: string }> = [
     { key: 'barcode', label: 'Bar Code' },
     { key: 'marketPlace', label: 'Market Place' },
@@ -50,14 +66,46 @@ export class OmsService {
     { key: 'category', label: 'Category' }
   ];
 
-  findSkuMappings(filters: SkuMappingFilters) {
+  constructor(
+    @Optional() @InjectModel(OmsSkuMappingModel.name) private readonly skuMappingModel?: Model<OmsSkuMappingModel>,
+    @Optional() @InjectModel(OmsOrderModel.name) private readonly orderModel?: Model<OmsOrderModel>,
+    @Optional() @InjectModel(OmsWaveModel.name) private readonly waveModel?: Model<OmsWaveModel>,
+    @Optional() @InjectModel(OmsAuditEventModel.name) private readonly auditModel?: Model<OmsAuditEventModel>
+  ) {}
+
+  async login(payload: LoginPayload) {
+    const username = this.clean(payload.username);
+    const password = this.clean(payload.password);
+    const expectedUser = process.env.OMS_DEMO_USER ?? 'ABCDnnn';
+    const expectedPassword = process.env.OMS_DEMO_PASSWORD ?? 'ABCD@1122';
+
+    if (username !== expectedUser || password !== expectedPassword) {
+      throw new BadRequestException('Invalid OMS username or password');
+    }
+
+    const token = Buffer.from(`${username}:${Date.now()}`).toString('base64url');
+    await this.writeAudit('session', username, 'login', `${username} logged in`, {});
+
+    return {
+      token,
+      user: {
+        username,
+        location: 'JX Karawaci',
+        role: 'Warehouse Admin'
+      }
+    };
+  }
+
+  async findSkuMappings(filters: SkuMappingFilters) {
+    await this.ensureSeeded();
     const query = filters.query?.trim().toLowerCase();
     const marketplace = filters.marketplace?.trim().toLowerCase();
     const brand = filters.brand?.trim().toLowerCase();
     const category = filters.category?.trim().toLowerCase();
     const barcode = filters.barcode?.trim().toLowerCase();
+    const rows = await this.getSkuRows();
 
-    return this.skuMappings.filter((item) => {
+    return rows.filter((item) => {
       const searchableValues = Object.values(item).map((value) => String(value).toLowerCase());
       const matchesMarketplace = !marketplace || marketplace === 'all' || item.marketPlace.toLowerCase() === marketplace;
       const matchesBrand = !brand || brand === 'all' || item.brand.toLowerCase() === brand;
@@ -71,16 +119,19 @@ export class OmsService {
     });
   }
 
-  findOne(id: string) {
+  async findOne(id: string) {
+    await this.ensureSeeded();
     return this.findById(id);
   }
 
-  findOrders(filters: OrderFilters) {
+  async findOrders(filters: OrderFilters) {
+    await this.ensureSeeded();
     const query = filters.query?.trim().toLowerCase();
     const channel = filters.channel?.trim().toLowerCase();
     const status = filters.status?.trim().toLowerCase();
+    const rows = await this.getOrderRows();
 
-    return this.orders.filter((order) => {
+    return rows.filter((order) => {
       const matchesQuery = !query || Object.values(order).some((value) => String(value).toLowerCase().includes(query));
       const matchesChannel = !channel || channel === 'all' || order.channelName.toLowerCase() === channel;
       const matchesStatus = !status || status === 'all' || order.status.toLowerCase() === status;
@@ -88,41 +139,62 @@ export class OmsService {
     });
   }
 
-  getOrderChannels() {
-    return [...new Set(this.orders.map((order) => order.channelName))].sort();
+  async getOrderChannels() {
+    await this.ensureSeeded();
+    const rows = await this.getOrderRows();
+    return [...new Set(rows.map((order) => order.channelName))].sort();
   }
 
-  updateOrderStatuses(payload: UpdateOrderStatusPayload) {
+  async updateOrderStatuses(payload: UpdateOrderStatusPayload) {
+    await this.ensureSeeded();
     const status = payload.status;
 
     if (!status || !this.isOrderStatus(status)) {
       throw new BadRequestException('Valid order status is required');
     }
 
+    const rows = await this.getOrderRows();
     const targetOrders = Array.isArray(payload.ids) && payload.ids.length > 0
-      ? this.orders.filter((order) => payload.ids?.includes(order.id))
-      : this.findOrders({ query: payload.query, channel: payload.channel });
+      ? rows.filter((order) => payload.ids?.includes(order.id))
+      : await this.findOrders({ query: payload.query, channel: payload.channel });
 
     if (targetOrders.length === 0) {
       throw new BadRequestException('No matching orders found');
     }
 
-    const ids = new Set(targetOrders.map((order) => order.id));
-    this.orders = this.orders.map((order) => (ids.has(order.id) ? { ...order, status } : order));
+    const invalid = targetOrders.filter((order) => !this.canTransition(order.status, status));
 
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `Invalid transition for ${invalid.slice(0, 3).map((order) => `${order.id} (${order.status} -> ${status})`).join(', ')}`
+      );
+    }
+
+    const ids = new Set(targetOrders.map((order) => order.id));
+
+    if (this.orderModel) {
+      await this.orderModel.updateMany({ id: { $in: [...ids] } }, { $set: { status } });
+    } else {
+      this.orders = this.orders.map((order) => (ids.has(order.id) ? { ...order, status } : order));
+    }
+
+    await Promise.all([...ids].map((id) => this.writeAudit('order', id, `status:${status}`, `Order moved to ${status}`, { status })));
+    const allRows = await this.getOrderRows();
     return {
       count: ids.size,
       status,
-      rows: this.orders.filter((order) => ids.has(order.id)),
-      allRows: this.orders
+      rows: allRows.filter((order) => ids.has(order.id)),
+      allRows
     };
   }
 
-  findWaves() {
-    return this.waves;
+  async findWaves() {
+    await this.ensureSeeded();
+    return this.getWaveRows();
   }
 
-  generateWave(payload: GenerateWavePayload) {
+  async generateWave(payload: GenerateWavePayload) {
+    await this.ensureSeeded();
     const zone = this.clean(payload.zone).toUpperCase();
 
     if (!zone) {
@@ -137,7 +209,8 @@ export class OmsService {
     const orderType = this.clean(payload.orderType).toLowerCase();
     const allowedStatuses = ['Accepted', 'Allocated'];
 
-    const eligible = this.orders.filter((order) => {
+    const rows = await this.getOrderRows();
+    const eligible = rows.filter((order) => {
       const matchesZone = order.zone.toLowerCase() === zone.toLowerCase();
       const matchesChannel = !channel || channel === 'all' || order.channelName.toLowerCase() === channel;
       const matchesOrderType = !orderType || orderType === '--- select ---' || order.orderType.toLowerCase() === orderType;
@@ -150,7 +223,8 @@ export class OmsService {
       throw new BadRequestException('No accepted or allocated orders found for this wave filter');
     }
 
-    const id = `WAVE-${String(this.waves.length + 1).padStart(4, '0')}`;
+    const existingWaves = await this.getWaveRows();
+    const id = `WAVE-${String(existingWaves.length + 1).padStart(4, '0')}`;
     const wave: OmsWave = {
       id,
       zone,
@@ -173,35 +247,50 @@ export class OmsService {
     };
 
     const ids = new Set(eligible.map((order) => order.id));
-    this.orders = this.orders.map((order) => (ids.has(order.id) ? { ...order, status: 'Picked' } : order));
-    this.waves.unshift(wave);
+
+    if (this.waveModel && this.orderModel) {
+      await this.waveModel.create(wave);
+      await this.orderModel.updateMany({ id: { $in: [...ids] } }, { $set: { status: 'Picked' } });
+    } else {
+      this.orders = this.orders.map((order) => (ids.has(order.id) ? { ...order, status: 'Picked' } : order));
+      this.waves.unshift(wave);
+    }
+
+    await this.writeAudit('wave', id, 'wave:generated', `Wave ${id} generated`, { zone, orders: eligible.length });
+    await Promise.all([...ids].map((orderId) => this.writeAudit('order', orderId, 'status:Picked', `Order added to ${id}`, { waveId: id })));
+    const allRows = await this.getOrderRows();
+    const waves = await this.getWaveRows();
 
     return {
       wave,
-      updatedOrders: this.orders.filter((order) => ids.has(order.id)),
-      allRows: this.orders,
-      waves: this.waves
+      updatedOrders: allRows.filter((order) => ids.has(order.id)),
+      allRows,
+      waves
     };
   }
 
-  getSummary() {
-    const marketplaces = [...new Set(this.skuMappings.map((item) => item.marketPlace))].sort();
-    const brands = [...new Set(this.skuMappings.map((item) => item.brand))].sort();
-    const categories = [...new Set(this.skuMappings.map((item) => item.category))].sort();
-    const barcodes = [...new Set(this.skuMappings.map((item) => item.barcode))].filter(Boolean).sort();
+  async getSummary() {
+    await this.ensureSeeded();
+    const skuRows = await this.getSkuRows();
+    const orderRows = await this.getOrderRows();
+    const waveRows = await this.getWaveRows();
+    const marketplaces = [...new Set(skuRows.map((item) => item.marketPlace))].sort();
+    const brands = [...new Set(skuRows.map((item) => item.brand))].sort();
+    const categories = [...new Set(skuRows.map((item) => item.category))].sort();
+    const barcodes = [...new Set(skuRows.map((item) => item.barcode))].filter(Boolean).sort();
     const mappedCounts = marketplaces.reduce<Record<string, number>>((counts, marketplace) => {
-      counts[marketplace.toLowerCase()] = this.skuMappings.filter((item) => item.marketPlace === marketplace).length;
+      counts[marketplace.toLowerCase()] = skuRows.filter((item) => item.marketPlace === marketplace).length;
       return counts;
     }, {});
     const barcodeCounts = barcodes.reduce<Record<string, number>>((counts, itemBarcode) => {
-      counts[itemBarcode] = this.skuMappings.filter((item) => item.barcode === itemBarcode).length;
+      counts[itemBarcode] = skuRows.filter((item) => item.barcode === itemBarcode).length;
       return counts;
     }, {});
 
     return {
-      masterSkus: new Set(this.skuMappings.map((item) => item.masterSku)).size,
-      variants: this.skuMappings.length,
-      colors: new Set(this.skuMappings.map((item) => item.barcode)).size,
+      masterSkus: new Set(skuRows.map((item) => item.masterSku)).size,
+      variants: skuRows.length,
+      colors: new Set(skuRows.map((item) => item.barcode)).size,
       marketplaces,
       brands,
       categories,
@@ -209,35 +298,42 @@ export class OmsService {
       mappedCounts,
       barcodeCounts,
       orders: {
-        total: this.orders.length,
-        pending: this.orders.filter((order) => order.status === 'Pending').length,
-        accepted: this.orders.filter((order) => order.status === 'Accepted').length,
-        allocated: this.orders.filter((order) => order.status === 'Allocated').length,
-        picked: this.orders.filter((order) => order.status === 'Picked').length,
-        shipped: this.orders.filter((order) => order.status === 'Shipped').length,
-        rejected: this.orders.filter((order) => order.status === 'Rejected').length
+        total: orderRows.length,
+        pending: orderRows.filter((order) => order.status === 'Pending').length,
+        accepted: orderRows.filter((order) => order.status === 'Accepted').length,
+        allocated: orderRows.filter((order) => order.status === 'Allocated').length,
+        picked: orderRows.filter((order) => order.status === 'Picked').length,
+        shipped: orderRows.filter((order) => order.status === 'Shipped').length,
+        rejected: orderRows.filter((order) => order.status === 'Rejected').length
       },
-      waves: this.waves.length
+      waves: waveRows.length
     };
   }
 
-  create(payload: Partial<OmsSkuMapping>) {
+  async create(payload: Partial<OmsSkuMapping>) {
+    await this.ensureSeeded();
     const errors = this.validateMapping(payload);
 
     if (errors.length > 0) {
       throw new BadRequestException(errors.join(', '));
     }
 
-    if (this.findExistingMapping(payload)) {
+    if (await this.findExistingMapping(payload)) {
       throw new BadRequestException('Duplicate OMS code already exists');
     }
 
     const mapping = this.toMapping(payload);
-    this.skuMappings.unshift(mapping);
+    if (this.skuMappingModel) {
+      await this.skuMappingModel.create(mapping);
+    } else {
+      this.skuMappings.unshift(mapping);
+    }
+    await this.writeAudit('skuMapping', mapping.id, 'sku:create', `${mapping.sellerSku} created`, { sellerSku: mapping.sellerSku });
     return mapping;
   }
 
-  bulkUpsert(payload: Partial<OmsSkuMapping>[] | { rows?: Partial<OmsSkuMapping>[] }) {
+  async bulkUpsert(payload: Partial<OmsSkuMapping>[] | { rows?: Partial<OmsSkuMapping>[] }) {
+    await this.ensureSeeded();
     const rows = Array.isArray(payload) ? payload : payload.rows;
 
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -248,38 +344,43 @@ export class OmsService {
     const errors: string[] = [];
     const seen = new Set<string>();
 
-    rows.forEach((row, index) => {
+    for (const [index, row] of rows.entries()) {
       const rowNumber = index + 2;
 
       if (this.isEmptyRow(row)) {
         errors.push(`Row ${rowNumber}: empty row skipped`);
-        return;
+        continue;
       }
 
       const validationErrors = this.validateMapping(row);
       if (validationErrors.length > 0) {
         errors.push(`Row ${rowNumber}: ${validationErrors.join(', ')}`);
-        return;
+        continue;
       }
 
       const compositeKey = this.compositeKey(row);
       if (seen.has(compositeKey)) {
         errors.push(`Row ${rowNumber}: duplicate row in uploaded file`);
-        return;
+        continue;
       }
       seen.add(compositeKey);
 
-      const existing = this.findExistingMapping(row);
+      const existing = await this.findExistingMapping(row);
 
       if (existing) {
-        saved.push(this.update(existing.id, row));
-        return;
+        saved.push(await this.update(existing.id, row));
+        continue;
       }
 
       const mapping = this.toMapping(row);
-      this.skuMappings.unshift(mapping);
+      if (this.skuMappingModel) {
+        await this.skuMappingModel.create(mapping);
+      } else {
+        this.skuMappings.unshift(mapping);
+      }
+      await this.writeAudit('skuMapping', mapping.id, 'sku:bulk-create', `${mapping.sellerSku} uploaded`, { sellerSku: mapping.sellerSku });
       saved.push(mapping);
-    });
+    }
 
     if (saved.length === 0) {
       throw new BadRequestException({
@@ -296,37 +397,34 @@ export class OmsService {
     };
   }
 
-  update(id: string, payload: Partial<OmsSkuMapping>) {
-    const mapping = this.findById(id);
+  async update(id: string, payload: Partial<OmsSkuMapping>) {
+    await this.ensureSeeded();
+    const mapping = await this.findById(id);
+    const updated = this.applyMappingPayload(mapping, payload);
 
-    if (payload.barcode !== undefined) mapping.barcode = this.clean(payload.barcode);
-    if (payload.marketPlace !== undefined) mapping.marketPlace = this.clean(payload.marketPlace);
-    if (payload.brand !== undefined) mapping.brand = this.clean(payload.brand);
-    if (payload.styleId !== undefined) mapping.styleId = this.clean(payload.styleId);
-    if (payload.van !== undefined) mapping.van = this.clean(payload.van);
-    if (payload.sellerSku !== undefined) mapping.sellerSku = this.clean(payload.sellerSku);
-    if (payload.masterSku !== undefined) mapping.masterSku = this.clean(payload.masterSku);
-    if (payload.skuCode !== undefined) mapping.skuCode = this.clean(payload.skuCode);
-    if (payload.size !== undefined) mapping.size = this.clean(payload.size);
-    if (payload.material !== undefined) mapping.material = this.clean(payload.material);
-    if (payload.packOf !== undefined) mapping.packOf = Number(payload.packOf);
-    if (payload.grouping !== undefined) mapping.grouping = this.clean(payload.grouping);
-    if (payload.closure !== undefined) mapping.closure = this.clean(payload.closure);
-    if (payload.style !== undefined) mapping.style = this.clean(payload.style);
-    if (payload.productName !== undefined) mapping.productName = this.clean(payload.productName);
-    if (payload.category !== undefined) mapping.category = this.clean(payload.category);
+    if (this.skuMappingModel) {
+      await this.skuMappingModel.updateOne({ id }, { $set: updated });
+    }
 
-    return mapping;
+    await this.writeAudit('skuMapping', id, 'sku:update', `${updated.sellerSku} updated`, { sellerSku: updated.sellerSku });
+    return updated;
   }
 
-  remove(id: string) {
-    const mapping = this.findById(id);
-    this.skuMappings = this.skuMappings.filter((item) => item.id !== id);
+  async remove(id: string) {
+    await this.ensureSeeded();
+    const mapping = await this.findById(id);
+    if (this.skuMappingModel) {
+      await this.skuMappingModel.deleteOne({ id });
+    } else {
+      this.skuMappings = this.skuMappings.filter((item) => item.id !== id);
+    }
+    await this.writeAudit('skuMapping', id, 'sku:delete', `${mapping.sellerSku} deleted`, { sellerSku: mapping.sellerSku });
     return { deleted: true, mapping };
   }
 
-  private findById(id: string) {
-    const mapping = this.skuMappings.find((item) => item.id === id);
+  private async findById(id: string) {
+    const rows = await this.getSkuRows();
+    const mapping = rows.find((item) => item.id === id);
 
     if (!mapping) {
       throw new NotFoundException('SKU mapping not found');
@@ -391,15 +489,39 @@ export class OmsService {
     ].join('|');
   }
 
-  private findExistingMapping(payload: Partial<OmsSkuMapping>) {
+  private applyMappingPayload(mapping: OmsSkuMapping, payload: Partial<OmsSkuMapping>) {
+    const updated = { ...mapping };
+
+    if (payload.barcode !== undefined) updated.barcode = this.clean(payload.barcode);
+    if (payload.marketPlace !== undefined) updated.marketPlace = this.clean(payload.marketPlace);
+    if (payload.brand !== undefined) updated.brand = this.clean(payload.brand);
+    if (payload.styleId !== undefined) updated.styleId = this.clean(payload.styleId);
+    if (payload.van !== undefined) updated.van = this.clean(payload.van);
+    if (payload.sellerSku !== undefined) updated.sellerSku = this.clean(payload.sellerSku);
+    if (payload.masterSku !== undefined) updated.masterSku = this.clean(payload.masterSku);
+    if (payload.skuCode !== undefined) updated.skuCode = this.clean(payload.skuCode);
+    if (payload.size !== undefined) updated.size = this.clean(payload.size);
+    if (payload.material !== undefined) updated.material = this.clean(payload.material);
+    if (payload.packOf !== undefined) updated.packOf = Number(payload.packOf);
+    if (payload.grouping !== undefined) updated.grouping = this.clean(payload.grouping);
+    if (payload.closure !== undefined) updated.closure = this.clean(payload.closure);
+    if (payload.style !== undefined) updated.style = this.clean(payload.style);
+    if (payload.productName !== undefined) updated.productName = this.clean(payload.productName);
+    if (payload.category !== undefined) updated.category = this.clean(payload.category);
+
+    return updated;
+  }
+
+  private async findExistingMapping(payload: Partial<OmsSkuMapping>) {
     const id = this.clean(payload.id);
     const barcode = this.clean(payload.barcode).toLowerCase();
     const marketplace = this.clean(payload.marketPlace).toLowerCase();
     const brand = this.clean(payload.brand).toLowerCase();
     const sellerSku = this.clean(payload.sellerSku).toLowerCase();
     const deterministicId = this.toBaseId(`${payload.barcode}-${payload.marketPlace}-${payload.brand}-${payload.sellerSku}`);
+    const rows = await this.getSkuRows();
 
-    return this.skuMappings.find((item) => {
+    return rows.find((item) => {
       const sameComposite =
         Boolean(sellerSku) &&
         item.sellerSku.toLowerCase() === sellerSku &&
@@ -422,6 +544,111 @@ export class OmsService {
     }
 
     return id;
+  }
+
+  private async ensureSeeded() {
+    if (!this.skuMappingModel || !this.orderModel) return;
+
+    const [skuCount, orderCount] = await Promise.all([
+      this.skuMappingModel.estimatedDocumentCount(),
+      this.orderModel.estimatedDocumentCount()
+    ]);
+
+    if (skuCount === 0) {
+      await this.skuMappingModel.insertMany(omsSkuMappings);
+    }
+
+    if (orderCount === 0) {
+      await this.orderModel.insertMany(omsOrders);
+    }
+  }
+
+  private async getSkuRows(): Promise<OmsSkuMapping[]> {
+    if (!this.skuMappingModel) return this.skuMappings;
+    const rows = await this.skuMappingModel.find().sort({ createdAt: -1 }).lean();
+    return rows.map((row) => ({
+      id: row.id,
+      barcode: row.barcode,
+      marketPlace: row.marketPlace,
+      brand: row.brand,
+      styleId: row.styleId,
+      van: row.van,
+      sellerSku: row.sellerSku,
+      masterSku: row.masterSku,
+      skuCode: row.skuCode,
+      size: row.size,
+      material: row.material,
+      packOf: row.packOf,
+      grouping: row.grouping,
+      closure: row.closure,
+      style: row.style,
+      productName: row.productName,
+      category: row.category
+    }));
+  }
+
+  private async getOrderRows(): Promise<OmsOrderRow[]> {
+    if (!this.orderModel) return this.orders;
+    const rows = await this.orderModel.find().sort({ orderDate: -1 }).lean();
+    return rows.map((row) => ({
+      id: row.id,
+      extOrderNo: row.extOrderNo,
+      orderNo: row.orderNo,
+      channelName: row.channelName,
+      orderType: row.orderType,
+      orderDate: row.orderDate,
+      skuCode: row.skuCode,
+      skuDesc: row.skuDesc,
+      walkinLocation: row.walkinLocation,
+      fulfillmentLocation: row.fulfillmentLocation,
+      orderQty: row.orderQty,
+      lineNo: row.lineNo,
+      lineAmount: row.lineAmount,
+      customer: row.customer,
+      status: row.status,
+      zone: row.zone,
+      bin: row.bin
+    }));
+  }
+
+  private async getWaveRows(): Promise<OmsWave[]> {
+    if (!this.waveModel) return this.waves;
+    const rows = await this.waveModel.find().sort({ createdAt: -1 }).lean();
+    return rows.map((row) => ({
+      id: row.id,
+      zone: row.zone,
+      picklistType: row.picklistType,
+      orders: row.orders,
+      qty: row.qty,
+      status: row.status,
+      createdAt: row.createdAt,
+      filters: row.filters
+    }));
+  }
+
+  private canTransition(from: OmsOrderStatus, to: OmsOrderStatus) {
+    return from === to || this.allowedTransitions[from].includes(to);
+  }
+
+  private async writeAudit(
+    entityType: 'order' | 'wave' | 'skuMapping' | 'session',
+    entityId: string,
+    action: string,
+    message: string,
+    details: Record<string, unknown>
+  ) {
+    const event = {
+      entityType,
+      entityId,
+      action,
+      message,
+      actor: 'ABCDnnn',
+      details
+    };
+
+    if (this.auditModel) {
+      await this.auditModel.create(event);
+    }
   }
 
   private toBaseId(value: string) {
