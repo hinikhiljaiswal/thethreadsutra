@@ -18,6 +18,39 @@ export type OmsSkuMapping = {
   category: string;
 };
 
+export type OmsOrderStatus = 'Pending' | 'Accepted' | 'Rejected' | 'Allocated' | 'Picked' | 'Shipped';
+
+export type OmsOrderRow = {
+  id: string;
+  extOrderNo: string;
+  orderNo: string;
+  channelName: string;
+  orderType: string;
+  orderDate: string;
+  skuCode: string;
+  skuDesc: string;
+  walkinLocation: string;
+  fulfillmentLocation: string;
+  orderQty: number;
+  lineNo: number;
+  lineAmount: number;
+  customer: string;
+  status: OmsOrderStatus;
+  zone: string;
+  bin: string;
+};
+
+export type OmsWave = {
+  id: string;
+  zone: string;
+  picklistType: string;
+  orders: number;
+  qty: number;
+  status: 'Draft' | 'Generated' | 'Released';
+  createdAt: string;
+  filters: Record<string, string>;
+};
+
 export const omsSkuMappings: OmsSkuMapping[] = [
   {
     id: '0001-flipkart-dressberry-drbbkbludotxlpo1',
@@ -170,5 +203,160 @@ export const omsSkuMappings: OmsSkuMapping[] = [
     style: 'Bikini',
     productName: 'Thread Sutra Women Anti Microbial Lace Cotton Blend Basic Bra',
     category: 'Bra'
+  }
+];
+
+export const omsOrders: OmsOrderRow[] = [
+  {
+    id: 'TEST-0001',
+    extOrderNo: 'TEST-0001',
+    orderNo: 'ACD194',
+    channelName: 'Jeevacare Magento-12',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-07 12:00 PM',
+    skuCode: 'DS_VINCULUM_A_001',
+    skuDesc: 'DS_Vinculum_A_001 T',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 1,
+    lineNo: 1,
+    lineAmount: 1000,
+    customer: 'Riya Sen',
+    status: 'Pending',
+    zone: 'A',
+    bin: 'A-01-07'
+  },
+  {
+    id: 'UWH6750973',
+    extOrderNo: 'UWH6750973',
+    orderNo: 'UWH6750973',
+    channelName: 'Amazon SOUQ-113',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-04 12:03 PM',
+    skuCode: '51H',
+    skuDesc: 'Yonex CAB 6000 Plus',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 10,
+    lineNo: 1,
+    lineAmount: 100,
+    customer: 'Aarav Mehta',
+    status: 'Pending',
+    zone: 'B',
+    bin: 'B-04-11'
+  },
+  {
+    id: 'UWH6750957',
+    extOrderNo: 'UWH6750957',
+    orderNo: 'UWH6750957',
+    channelName: 'Test Woocommerce-33',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-04 12:00 PM',
+    skuCode: 'DS2',
+    skuDesc: 'Yonex CAB 7000 Plus',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 10,
+    lineNo: 1,
+    lineAmount: 20400,
+    customer: 'Mira Rao',
+    status: 'Allocated',
+    zone: 'A',
+    bin: 'A-03-22'
+  },
+  {
+    id: 'UWH6750938',
+    extOrderNo: 'UWH6750938',
+    orderNo: 'UWH6750938',
+    channelName: 'JX Karawaci',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-04 11:55 AM',
+    skuCode: '1H',
+    skuDesc: 'Yonex CAB 6000 Plus',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 10,
+    lineNo: 1,
+    lineAmount: 12340,
+    customer: 'Devika Nair',
+    status: 'Accepted',
+    zone: 'C',
+    bin: 'C-09-02'
+  },
+  {
+    id: 'NWB933553',
+    extOrderNo: 'NWB933553',
+    orderNo: 'ACD193',
+    channelName: 'Nykaa PO UAT',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-04 03:02 AM',
+    skuCode: 'DS_VINCULUM_A_001',
+    skuDesc: 'DS_Vinculum_A_001 T',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 3,
+    lineNo: 1,
+    lineAmount: 3000,
+    customer: 'Ishaan Kapoor',
+    status: 'Pending',
+    zone: 'B',
+    bin: 'B-02-18'
+  },
+  {
+    id: 'NWB933572',
+    extOrderNo: 'NWB933572',
+    orderNo: 'ACD190',
+    channelName: 'Nykaa PO UAT',
+    orderType: 'COD',
+    orderDate: '2026-07-04 03:02 AM',
+    skuCode: 'DS_VINCULUM_A_001',
+    skuDesc: 'DS_Vinculum_A_001 T',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 3,
+    lineNo: 1,
+    lineAmount: 3000,
+    customer: 'Naina Shah',
+    status: 'Rejected',
+    zone: 'D',
+    bin: 'D-05-19'
+  },
+  {
+    id: 'NWB933577',
+    extOrderNo: 'NWB933577',
+    orderNo: 'ACD191',
+    channelName: 'Fashion Techies Shopify-44',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-04 03:02 AM',
+    skuCode: 'TSBKBLKLCMP12',
+    skuDesc: 'Thread Sutra Cotton Blend Basic Bra',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 5,
+    lineNo: 1,
+    lineAmount: 4495,
+    customer: 'Sara Dsouza',
+    status: 'Allocated',
+    zone: 'A',
+    bin: 'A-08-04'
+  },
+  {
+    id: 'NWB933578',
+    extOrderNo: 'NWB933578',
+    orderNo: 'ACD192',
+    channelName: 'vajorOm-12',
+    orderType: 'Prepaid',
+    orderDate: '2026-07-04 03:02 AM',
+    skuCode: 'DRBBKBLUDOTXLPO1',
+    skuDesc: 'DressBerry Cotton Blend Bikini Briefs',
+    walkinLocation: 'UWH-UWH233-JX Karawaci',
+    fulfillmentLocation: 'UWH-UWH233-JX Karawaci',
+    orderQty: 4,
+    lineNo: 1,
+    lineAmount: 2396,
+    customer: 'Kabir Jain',
+    status: 'Picked',
+    zone: 'C',
+    bin: 'C-01-10'
   }
 ];

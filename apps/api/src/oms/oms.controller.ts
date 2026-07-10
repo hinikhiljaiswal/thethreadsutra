@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { OmsService } from './oms.service';
-import type { OmsSkuMapping } from './seed-oms';
+import type { OmsOrderStatus, OmsSkuMapping } from './seed-oms';
 
 @Controller('oms')
 export class OmsController {
@@ -20,6 +20,35 @@ export class OmsController {
   @Get('summary')
   getSummary() {
     return this.omsService.getSummary();
+  }
+
+  @Get('orders')
+  getOrders(
+    @Query('q') query?: string,
+    @Query('channel') channel?: string,
+    @Query('status') status?: string
+  ) {
+    return this.omsService.findOrders({ query, channel, status });
+  }
+
+  @Get('orders/channels')
+  getOrderChannels() {
+    return this.omsService.getOrderChannels();
+  }
+
+  @Post('orders/status')
+  updateOrderStatuses(@Body() body: { ids?: string[]; status?: OmsOrderStatus; query?: string; channel?: string }) {
+    return this.omsService.updateOrderStatuses(body);
+  }
+
+  @Get('waves')
+  getWaves() {
+    return this.omsService.findWaves();
+  }
+
+  @Post('waves')
+  generateWave(@Body() body: Record<string, string>) {
+    return this.omsService.generateWave(body);
   }
 
   @Get('sku-mappings/:id')

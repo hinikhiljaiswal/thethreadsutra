@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { omsSkuMappings, type OmsSkuMapping } from './seed-oms';
+import { omsOrders, omsSkuMappings, type OmsOrderRow, type OmsOrderStatus, type OmsSkuMapping, type OmsWave } from './seed-oms';
 
 type SkuMappingFilters = {
   query?: string;
@@ -9,9 +9,38 @@ type SkuMappingFilters = {
   barcode?: string;
 };
 
+type OrderFilters = {
+  query?: string;
+  channel?: string;
+  status?: string;
+};
+
+type UpdateOrderStatusPayload = {
+  ids?: string[];
+  status?: OmsOrderStatus;
+  query?: string;
+  channel?: string;
+};
+
+type GenerateWavePayload = {
+  zone?: string;
+  picklistType?: string;
+  minQty?: string;
+  maxQty?: string;
+  orderProcessing?: string;
+  waveDescription?: string;
+  channel?: string;
+  orderType?: string;
+  brand?: string;
+  orderStatus?: string;
+  skuCode?: string;
+};
+
 @Injectable()
 export class OmsService {
   private skuMappings: OmsSkuMapping[] = [...omsSkuMappings];
+  private orders: OmsOrderRow[] = [...omsOrders];
+  private waves: OmsWave[] = [];
   private readonly requiredFields: Array<{ key: keyof OmsSkuMapping; label: string }> = [
     { key: 'barcode', label: 'Bar Code' },
     { key: 'marketPlace', label: 'Market Place' },
@@ -46,6 +75,115 @@ export class OmsService {
     return this.findById(id);
   }
 
+  findOrders(filters: OrderFilters) {
+    const query = filters.query?.trim().toLowerCase();
+    const channel = filters.channel?.trim().toLowerCase();
+    const status = filters.status?.trim().toLowerCase();
+
+    return this.orders.filter((order) => {
+      const matchesQuery = !query || Object.values(order).some((value) => String(value).toLowerCase().includes(query));
+      const matchesChannel = !channel || channel === 'all' || order.channelName.toLowerCase() === channel;
+      const matchesStatus = !status || status === 'all' || order.status.toLowerCase() === status;
+      return matchesQuery && matchesChannel && matchesStatus;
+    });
+  }
+
+  getOrderChannels() {
+    return [...new Set(this.orders.map((order) => order.channelName))].sort();
+  }
+
+  updateOrderStatuses(payload: UpdateOrderStatusPayload) {
+    const status = payload.status;
+
+    if (!status || !this.isOrderStatus(status)) {
+      throw new BadRequestException('Valid order status is required');
+    }
+
+    const targetOrders = Array.isArray(payload.ids) && payload.ids.length > 0
+      ? this.orders.filter((order) => payload.ids?.includes(order.id))
+      : this.findOrders({ query: payload.query, channel: payload.channel });
+
+    if (targetOrders.length === 0) {
+      throw new BadRequestException('No matching orders found');
+    }
+
+    const ids = new Set(targetOrders.map((order) => order.id));
+    this.orders = this.orders.map((order) => (ids.has(order.id) ? { ...order, status } : order));
+
+    return {
+      count: ids.size,
+      status,
+      rows: this.orders.filter((order) => ids.has(order.id)),
+      allRows: this.orders
+    };
+  }
+
+  findWaves() {
+    return this.waves;
+  }
+
+  generateWave(payload: GenerateWavePayload) {
+    const zone = this.clean(payload.zone).toUpperCase();
+
+    if (!zone) {
+      throw new BadRequestException('Zone is required to generate a picklist');
+    }
+
+    const skuCodes = this.clean(payload.skuCode)
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
+    const channel = this.clean(payload.channel).toLowerCase();
+    const orderType = this.clean(payload.orderType).toLowerCase();
+    const allowedStatuses = ['Accepted', 'Allocated'];
+
+    const eligible = this.orders.filter((order) => {
+      const matchesZone = order.zone.toLowerCase() === zone.toLowerCase();
+      const matchesChannel = !channel || channel === 'all' || order.channelName.toLowerCase() === channel;
+      const matchesOrderType = !orderType || orderType === '--- select ---' || order.orderType.toLowerCase() === orderType;
+      const matchesSku = skuCodes.length === 0 || skuCodes.includes(order.skuCode.toLowerCase());
+      const matchesStatus = allowedStatuses.includes(order.status);
+      return matchesZone && matchesChannel && matchesOrderType && matchesSku && matchesStatus;
+    });
+
+    if (eligible.length === 0) {
+      throw new BadRequestException('No accepted or allocated orders found for this wave filter');
+    }
+
+    const id = `WAVE-${String(this.waves.length + 1).padStart(4, '0')}`;
+    const wave: OmsWave = {
+      id,
+      zone,
+      picklistType: this.clean(payload.picklistType) || 'Full',
+      orders: eligible.length,
+      qty: eligible.reduce((total, order) => total + order.orderQty, 0),
+      status: 'Generated',
+      createdAt: new Date().toISOString(),
+      filters: {
+        minQty: this.clean(payload.minQty),
+        maxQty: this.clean(payload.maxQty),
+        orderProcessing: this.clean(payload.orderProcessing),
+        waveDescription: this.clean(payload.waveDescription),
+        channel: this.clean(payload.channel),
+        orderType: this.clean(payload.orderType),
+        brand: this.clean(payload.brand),
+        orderStatus: this.clean(payload.orderStatus),
+        skuCode: this.clean(payload.skuCode)
+      }
+    };
+
+    const ids = new Set(eligible.map((order) => order.id));
+    this.orders = this.orders.map((order) => (ids.has(order.id) ? { ...order, status: 'Picked' } : order));
+    this.waves.unshift(wave);
+
+    return {
+      wave,
+      updatedOrders: this.orders.filter((order) => ids.has(order.id)),
+      allRows: this.orders,
+      waves: this.waves
+    };
+  }
+
   getSummary() {
     const marketplaces = [...new Set(this.skuMappings.map((item) => item.marketPlace))].sort();
     const brands = [...new Set(this.skuMappings.map((item) => item.brand))].sort();
@@ -69,7 +207,17 @@ export class OmsService {
       categories,
       barcodes,
       mappedCounts,
-      barcodeCounts
+      barcodeCounts,
+      orders: {
+        total: this.orders.length,
+        pending: this.orders.filter((order) => order.status === 'Pending').length,
+        accepted: this.orders.filter((order) => order.status === 'Accepted').length,
+        allocated: this.orders.filter((order) => order.status === 'Allocated').length,
+        picked: this.orders.filter((order) => order.status === 'Picked').length,
+        shipped: this.orders.filter((order) => order.status === 'Shipped').length,
+        rejected: this.orders.filter((order) => order.status === 'Rejected').length
+      },
+      waves: this.waves.length
     };
   }
 
@@ -189,6 +337,10 @@ export class OmsService {
 
   private clean(value: unknown) {
     return String(value ?? '').trim();
+  }
+
+  private isOrderStatus(value: string): value is OmsOrderStatus {
+    return ['Pending', 'Accepted', 'Rejected', 'Allocated', 'Picked', 'Shipped'].includes(value);
   }
 
   private validateMapping(payload: Partial<OmsSkuMapping>) {
